@@ -1,0 +1,7 @@
+{
+  "sender_email": "",
+  "app_password": "",
+  "smtp_server": "smtp.gmail.com",
+  "smtp_port": 587,
+  "target_email": "Navinram022@gmail.com"
+}
