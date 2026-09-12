@@ -17,12 +17,14 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-from playwright.sync_api import sync_playwright
-
-from config import PROFILE_DIR, LOGS_DIR, STATE_FILE, BASE_DIR
-from story_scraper import fetch_latest_anupama_update
-from notebooklm_client import add_source_to_notebooklm
-from gemini_client import generate_with_gemini_gem
+try:
+    from playwright.sync_api import sync_playwright
+    from notebooklm_client import add_source_to_notebooklm
+    from gemini_client import generate_with_gemini_gem
+except ImportError:
+    sync_playwright = None
+    add_source_to_notebooklm = None
+    generate_with_gemini_gem = None
 from email_service import send_email_report
 from prompt_app_service import save_to_prompt_app
 
