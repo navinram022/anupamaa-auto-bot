@@ -1,0 +1,7 @@
+__pycache__/
+chrome_profile/
+logs/
+reports/
+last_run_state.json
+scratch/
+*.pyc
