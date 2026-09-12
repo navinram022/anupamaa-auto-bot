@@ -25,6 +25,9 @@ except ImportError:
     sync_playwright = None
     add_source_to_notebooklm = None
     generate_with_gemini_gem = None
+
+from config import PROFILE_DIR, LOGS_DIR, STATE_FILE, BASE_DIR
+from story_scraper import fetch_latest_anupama_update
 from email_service import send_email_report
 from prompt_app_service import save_to_prompt_app
 
