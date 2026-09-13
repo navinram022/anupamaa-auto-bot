@@ -17,9 +17,9 @@ def clean_block(text: str) -> str:
     filtered = []
     for l in lines:
         l_str = l.strip()
-        if re.match(r'^\[पोस्ट\s*\d+\].*', l_str):
+        if re.match(r'^\[(?:पोस्ट|वीडियो)\s*\d+\].*', l_str):
             continue
-        if re.match(r'^(फोटो में लिखने के लिए टेक्स्ट|फेसबुक कैप्शन)$', l_str):
+        if re.match(r'^(?:फोटो में लिखने के लिए टेक्स्ट|फोटो पर लिखने के लिए टेक्स्ट|फोटो टेक्स्ट|फेसबुक कैप्शन|वॉइसओवर स्क्रिप्ट)[:]?$', l_str):
             continue
         filtered.append(l)
     return '\n'.join(filtered).strip()
@@ -33,7 +33,7 @@ def format_full_master_card(gemini_text: str, episode_date: str = "") -> str:
         episode_date = datetime.now().strftime("%d %b %Y")
 
     # Split text into sections
-    parts = re.split(r'(?=\[पोस्ट\s*\d+\]|चरण\s*2|Poll|2\s*Poll|पोल\s*1)', gemini_text)
+    parts = re.split(r'(?=\[(?:पोस्ट\s*\d+|वीडियो\s*\d+|फेसबुक\s*पोल्स|गहरा\s*विश्लेषण)\]|चरण\s*2|Poll|2\s*Poll|पोल\s*1)', gemini_text)
 
     post1_photo, post1_cap = "", ""
     post2_photo, post2_cap = "", ""
@@ -147,15 +147,14 @@ def parse_gemini_output(gemini_text: str, episode_date: str = "") -> list:
     post1_match = re.search(r'(\[पोस्ट 1\].*?)(?=\[पोस्ट 2\]|\Z)', gemini_text, re.DOTALL)
     post2_match = re.search(r'(\[पोस्ट 2\].*?)(?=\[पोस्ट 3\]|\Z)', gemini_text, re.DOTALL)
     post3_match = re.search(r'(\[पोस्ट 3\].*?)(?=\[पोस्ट 4\]|\Z)', gemini_text, re.DOTALL)
-    post4_match = re.search(r'(\[पोस्ट 4\].*?)(?=चरण\s*2|Poll|पोल|\Z)', gemini_text, re.DOTALL)
+    post4_match = re.search(r'(\[पोस्ट 4\].*?)(?=\[वीडियो\s*1\]|\[फेसबुक\s*पोल्स\]|\[गहरा\s*विश्लेषण|चरण\s*2|Poll|पोल|\Z)', gemini_text, re.DOTALL)
+    video_match = re.search(r'(\[वीडियो\s*1\].*?)(?=\[फेसबुक\s*पोल्स\]|\[गहरा\s*विश्लेषण|चरण\s*2|Poll|पोल|\Z)', gemini_text, re.DOTALL)
 
-    poll_match = re.search(r'((?:2\s*Poll|Poll|पोल).*?)(?=चरण\s*2|\Z)', gemini_text, re.DOTALL | re.IGNORECASE)
+    poll_match = re.search(r'((?:\[फेसबुक\s*पोल्स\].*?|2\s*Poll|Poll|पोल).*?)(?=\[गहरा\s*विश्लेषण|चरण\s*2|\Z)', gemini_text, re.DOTALL | re.IGNORECASE)
     if not poll_match:
-        poll_match = re.search(r'(पोल\s*1:.*?)(?=चरण\s*2|\Z)', gemini_text, re.DOTALL | re.IGNORECASE)
+        poll_match = re.search(r'(पोल\s*1:.*?)(?=\[गहरा\s*विश्लेषण|चरण\s*2|\Z)', gemini_text, re.DOTALL | re.IGNORECASE)
 
-    analysis_match = re.search(r'(चरण\s*2\s*:.*?)(?=(?:2\s*Poll|Poll|पोल)|\Z)', gemini_text, re.DOTALL | re.IGNORECASE)
-    if not analysis_match:
-        analysis_match = re.search(r'(चरण\s*2.*?)(?=\Z)', gemini_text, re.DOTALL | re.IGNORECASE)
+    analysis_match = re.search(r'((?:\[गहरा\s*विश्लेषण|चरण\s*2).*?)(?=\Z)', gemini_text, re.DOTALL | re.IGNORECASE)
 
     def add_note(suffix_id, title, content_text):
         if not content_text or len(content_text.strip()) < 20:
@@ -176,6 +175,8 @@ def parse_gemini_output(gemini_text: str, episode_date: str = "") -> list:
         add_note("post3", f"📌 [पोस्ट 3] 5 अपकमिंग ट्विस्ट्स ({episode_date})", post3_match.group(1))
     if post4_match:
         add_note("post4", f"📌 [पोस्ट 4] सबसे बड़ी घटना ({episode_date})", post4_match.group(1))
+    if video_match:
+        add_note("video1", f"🎬 [वीडियो 1] 3 मिनट लॉन्ग वीडियो व वॉइसओवर ({episode_date})", video_match.group(1))
     if poll_match:
         add_note("poll", f"📊 [पोल पोस्ट्स] ऑडियंस वोटिंग सवाल ({episode_date})", poll_match.group(1))
     if analysis_match:
@@ -201,9 +202,10 @@ def parse_individual_post_cards(gemini_text: str, episode_date: str = "") -> lis
     category_name = f"📅 {episode_date} - अनुपमा रिटन अपडेट"
 
     # Split text into sections
-    parts = re.split(r'(?=\[पोस्ट\s*\d+\]|चरण\s*2|Poll|2\s*Poll|पोल\s*1)', gemini_text)
+    parts = re.split(r'(?=\[(?:पोस्ट\s*\d+|वीडियो\s*\d+|फेसबुक\s*पोल्स|गहरा\s*विश्लेषण)\]|चरण\s*2|Poll|2\s*Poll|पोल\s*1)', gemini_text)
 
     post_pairs = {}
+    video_text = ""
     analysis_text = ""
     poll_texts = []
 
@@ -212,6 +214,7 @@ def parse_individual_post_cards(gemini_text: str, episode_date: str = "") -> lis
         if not p_strip:
             continue
         m_post = re.search(r'\[पोस्ट\s*(\d+)\]\s*:\s*(.*?)(?:\n|$)', p_strip)
+        m_vid = re.search(r'\[वीडियो\s*(\d+)\]', p_strip)
         if m_post:
             p_num = int(m_post.group(1))
             p_title = m_post.group(2).strip()
@@ -221,9 +224,11 @@ def parse_individual_post_cards(gemini_text: str, episode_date: str = "") -> lis
                 post_pairs[p_num]["photo"] = p_strip
             elif "कैप्शन" in p_strip[:80]:
                 post_pairs[p_num]["caption"] = p_strip
-        elif re.search(r'चरण\s*2', p_strip):
+        elif m_vid:
+            video_text = p_strip
+        elif re.search(r'(?:\[गहरा\s*विश्लेषण|चरण\s*2)', p_strip):
             analysis_text = p_strip
-        elif re.search(r'(?:Poll|पोल)', p_strip, re.IGNORECASE):
+        elif re.search(r'(?:\[फेसबुक\s*पोल्स\]|Poll|पोल)', p_strip, re.IGNORECASE):
             poll_texts.append(p_strip)
 
     order_idx = 1
@@ -257,6 +262,26 @@ def parse_individual_post_cards(gemini_text: str, episode_date: str = "") -> lis
         })
         order_idx += 1
 
+    # Video 1 note card
+    if video_text:
+        clean_vid = clean_block(video_text)
+        vid_decorated = f"""┌── 🎬 [3 मिनट लॉन्ग वीडियो वॉइसओवर स्क्रिप्ट व थंबनेल] ────────────
+{clean_vid}
+└──────────────────────────────────────────────────────────────────"""
+        cards.append({
+            "id": f"card_anupamaa_{today_tag}_video_1",
+            "title": "[वीडियो 1] 3 मिनट लॉन्ग वीडियो व वॉइसओवर",
+            "category": category_name,
+            "basePrompt": vid_decorated,
+            "photoText": "3 मिनट लॉन्ग वीडियो व वॉइसओवर",
+            "caption": clean_vid,
+            "order": order_idx,
+            "isNote": True,
+            "createdAt": now_ms,
+            "updatedAt": now_ms
+        })
+        order_idx += 1
+
     # Polls note card
     if poll_texts:
         clean_polls = "\n\n".join(clean_block(pt) for pt in poll_texts)
@@ -265,7 +290,7 @@ def parse_individual_post_cards(gemini_text: str, episode_date: str = "") -> lis
 └──────────────────────────────────────────────────────────────────"""
         cards.append({
             "id": f"card_anupamaa_{today_tag}_polls",
-            "title": "[पोल पोस्ट्स] ऑडियंस वोटिंग सवाल",
+            "title": "[पोल पोस्ट्स] 5 ऑडियंस वोटिंग सवाल",
             "category": category_name,
             "basePrompt": poll_decorated,
             "photoText": "ऑडियंस पोल सवाल",
@@ -304,7 +329,7 @@ def extract_post_photo_texts(gemini_text: str) -> dict:
     Extracts clean photo text for posts 1, 2, 3, and 4
     to directly populate the user's template cards.
     """
-    parts = re.split(r'(?=\[पोस्ट\s*\d+\]|चरण\s*2|Poll|2\s*Poll|पोल\s*1)', gemini_text)
+    parts = re.split(r'(?=\[(?:पोस्ट\s*\d+|वीडियो\s*\d+|फेसबुक\s*पोल्स|गहरा\s*विश्लेषण)\]|चरण\s*2|Poll|2\s*Poll|पोल\s*1)', gemini_text)
     photo_texts = {}
 
     for p in parts:
