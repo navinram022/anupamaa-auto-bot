@@ -15,23 +15,45 @@ def clean_story_html(raw_html: str) -> str:
     """Strip HTML tags, scripts, and promotional clutter from story content."""
     # Remove script and style tags
     clean = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', raw_html, flags=re.DOTALL | re.IGNORECASE)
-    # Replace breaks and paragraphs with newlines
     clean = re.sub(r'<br\s*/?>', '\n', clean, flags=re.IGNORECASE)
     clean = re.sub(r'</p>', '\n\n', clean, flags=re.IGNORECASE)
-    # Strip all remaining HTML tags
     clean = re.sub(r'<[^>]+>', '', clean)
-    # Unescape HTML entities (&nbsp;, &#8217;, etc.)
     clean = html.unescape(clean)
+    
+    # 1. Strip player controls
+    clean = re.sub(r'(?:Play|Pause)\s+Next\s+Mute\s+Current\s+Time[\s\S]*?Fullscreen', '', clean, flags=re.IGNORECASE)
+    
+    # 2. Strip social share junk
+    clean = re.sub(r'FacebookXPinterestWhatsApp', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Share\s+this:\s*Twitter\s*Facebook', '', clean, flags=re.IGNORECASE)
+    
+    # 3. Strip website boilerplate
+    clean = re.sub(r'Anupama\s+Spoilers,?\s+Upcoming\s+Story,?\s+Latest\s+Gossip\s*,?\s*Future\s+Story,?\s*Latest\s+News\s+and\s+Upcoming\s+Twist\s+on\s+Justshowbiz\.net', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Written\s+Update\s+on\s+Tellyexpress\.com', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Written\s+Update\s+on\s+Justshowbiz\.net', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'The\s+post\s+Anupama[\s\S]*?appeared\s+first\s+on\s+JustShowBiz\.', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Stay\s+tuned\s+to\s+Justshowbiz[\s\S]*?(?:\n|$)', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Stay\s+tuned\s+with\s+us[\s\S]*?(?:\n|$)', '', clean, flags=re.IGNORECASE)
+    
+    # 4. Strip author lines
+    clean = re.sub(r'[A-Za-z]+\s+By\s+[A-Za-z]+\s+[A-Za-z]+\s+\d{1,2},?\s+\d{4}', '', clean)
+    clean = re.sub(r'By\s+[A-Za-z]+\s+[A-Za-z]+\s+\d{1,2},?\s+\d{4}', '', clean)
+    clean = re.sub(r'\bRony\b', '', clean)
+    
+    # 5. Strip "Also Read:" and links
+    clean = re.sub(r'Also\s+Read:?[\s\S]*?(?:\n|$)', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Click\s+here\s+to\s+read[\s\S]*?(?:\n|$)', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Read\s+More:?[\s\S]*?(?:\n|$)', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'https?://\S+', '', clean)
+    clean = re.sub(r'#\w+', '', clean)
     
     # Clean up excess whitespace and blank lines
     lines = []
     for line in clean.split('\n'):
         line = line.strip()
-        # Filter out common ad / footer phrases
         if not line:
             continue
         if re.search(r'(also read|click to read|stay tuned to|justshowbiz|follow us on|advertisement)', line, re.IGNORECASE):
-            # Skip promotional links
             if len(line) < 120 and ('read' in line.lower() or 'follow' in line.lower() or 'stay tuned' in line.lower()):
                 continue
         lines.append(line)
@@ -78,6 +100,10 @@ def fetch_latest_anupama_update() -> dict:
             raw_content = content_m.group(1) if content_m else ""
             story_text = clean_story_html(raw_content)
             
+            # Always prepend the article title (which contains the episode date) to the story text
+            if title and not story_text.startswith(title):
+                story_text = f"{title}\n\n{story_text}"
+                
             logger.info(f"Successfully found latest update: '{title}' ({len(story_text)} chars)")
             return {
                 "title": title,
