@@ -151,15 +151,12 @@ def run_pipeline(force: bool = False):
                 
             browser_context.close()
         
-    # Step 4: Parse into master card and save directly to Prompt App Daily Category
-    print(f"\n[4/4] Publishing single master card to daily category '📅 {date_str} - अनुपमा रिटन अपडेट'...")
-    if not gemini_result:
-        gemini_result = f"(Gemini output not available. Here is the raw story):\n\n{story_text}"
-
-    from prompt_app_service import save_to_prompt_app
-    saved_to_app = save_to_prompt_app(title, date_str, gemini_result, link)
+    # Step 4: Publish 12 Photo Cards + 4 Special Notes (including Note -3 for NotebookLM) to Prompt App
+    print(f"\n[4/4] Publishing 12 Cards & Special Notes to Prompt App...")
+    from create_12_cards import publish_all_12_cards
+    saved_to_app = publish_all_12_cards()
     if saved_to_app:
-        print(f"      [OK] Successfully published to Daily Category '📅 {date_str} - अनुपमा रिटन अपडेट' in Prompt App!")
+        print("      [OK] Successfully published 14 items to Prompt App and created Master Google Doc!")
 
     # Step 5: Optional Email Delivery
     email_sent = send_email_report(title, date_str, gemini_result, link)
