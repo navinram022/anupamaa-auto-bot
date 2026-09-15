@@ -1,13 +1,22 @@
+# -*- coding: utf-8 -*-
 """
+main.py
 Master Orchestrator for Anupamaa Written Update Automation.
-Fetches story -> Adds to NotebookLM -> Generates via Gemini Gem -> Emails result.
+Pure Native Python Flow (ZERO GEMINI):
+1. Fetches latest episode from JustShowBiz RSS.
+2. FIRST: Saves directly to Cloud (Firestore Prompt App Cards & Master Google Doc).
+3. SECOND: Checks NotebookLM via Chrome Profile:
+   - If user already uploaded today's story -> Exits quietly without duplicate!
+   - If not present -> Automatically uploads with verified dated heading.
+4. Generates local HTML report & email.
 """
 
 import os
 import sys
+import re
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # Ensure clean UTF-8 console output on Windows
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -20,16 +29,14 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 try:
     from playwright.sync_api import sync_playwright
     from notebooklm_client import add_source_to_notebooklm
-    from gemini_client import generate_with_gemini_gem
 except ImportError:
     sync_playwright = None
     add_source_to_notebooklm = None
-    generate_with_gemini_gem = None
 
 from config import PROFILE_DIR, LOGS_DIR, STATE_FILE, BASE_DIR
 from story_scraper import fetch_latest_anupama_update
 from email_service import send_email_report
-from prompt_app_service import save_to_prompt_app
+from create_12_cards import publish_all_12_cards
 
 # Configure logging
 log_file = os.path.join(LOGS_DIR, "automation.log")
@@ -43,6 +50,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AnupamaaBot.Main")
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 def is_already_run_today() -> bool:
     """Checks if the bot has already processed today's episode."""
     if not os.path.exists(STATE_FILE):
@@ -50,127 +59,138 @@ def is_already_run_today() -> bool:
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as f:
             state = json.load(f)
-            today_str = datetime.now().strftime("%Y-%m-%d")
+            today_str = datetime.now(IST).strftime("%Y-%m-%d")
             return state.get("last_run_date") == today_str
     except Exception:
         return False
 
 def mark_run_completed(title: str, link: str):
     """Saves the completion state for today."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = datetime.now(IST).strftime("%Y-%m-%d")
     state = {
         "last_run_date": today_str,
-        "completed_at": datetime.now().isoformat(),
+        "completed_at": datetime.now(IST).isoformat(),
         "title": title,
         "link": link
     }
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
-def run_pipeline(force: bool = False):
+def is_episode_from_today(title: str, pub_date_str: str) -> bool:
+    """Checks if the fetched episode corresponds to today's date in IST."""
+    now_ist = datetime.now(IST)
+    today_day = str(now_ist.day)
+    today_month = now_ist.strftime("%B")
+    today_month_short = now_ist.strftime("%b")
+
+    title_lower = title.lower()
+    month_match = (today_month.lower() in title_lower) or (today_month_short.lower() in title_lower)
+    day_regex = rf'\b0?{today_day}(?:st|nd|rd|th)?\b'
+    day_match = bool(re.search(day_regex, title_lower))
+
+    if month_match and day_match:
+        return True
+
+    if pub_date_str:
+        pub_lower = pub_date_str.lower()
+        if (today_month_short.lower() in pub_lower) and bool(re.search(day_regex, pub_lower)):
+            return True
+
+    return False
+
+def run_pipeline(force: bool = False, cloud_mode: bool = False):
     logger.info("==================================================")
-    logger.info("Starting Anupamaa Episode Automation Pipeline...")
+    logger.info(f"Starting Anupamaa Pipeline ({'Cloud' if cloud_mode else 'Local'} Mode)...")
     logger.info("==================================================")
-    
+
     # 0. Check daily completion
     if not force and is_already_run_today():
-        logger.info("Today's Anupamaa episode has already been processed and sent. Exiting.")
+        logger.info("Today's Anupamaa episode has already been processed. Exiting.")
         print("\n✓ Today's update has already been processed! Use --force to re-run if needed.")
         return
-        
+
     # 1. Fetch story from JustShowBiz
-    logger.info("Step 1/4: Fetching latest Anupamaa Written Update...")
+    logger.info("Step 1/3: Fetching latest Anupamaa Written Update...")
     try:
         episode_data = fetch_latest_anupama_update()
     except Exception as e:
         logger.error(f"Failed to fetch story from JustShowBiz: {e}")
+        print(f"\n[ERROR] Failed to fetch story: {e}")
         return
-        
+
     title = episode_data["title"]
     date_str = episode_data["date"]
     link = episode_data["link"]
     story_text = episode_data["story"]
-    
-    print(f"\n[1/4] Found Episode: {title}")
+
+    print(f"\n[1/3] Found Episode: {title}")
     print(f"      Story Length: {len(story_text)} characters")
-    
-    is_cloud_mode = "--cloud" in sys.argv or (not sys.platform.startswith("win"))
-    gemini_result = ""
 
-    if is_cloud_mode:
-        print("\n[2/4] [CLOUD MODE] Generating content via Google Gemini API (No browser needed)...")
-        try:
-            from gemini_api_client import generate_with_gemini_api
-            gemini_result = generate_with_gemini_api(story_text, date_str)
-            print("      [OK] Successfully received structured Gemini output!")
-        except Exception as e:
-            logger.error(f"Cloud Gemini API call failed: {e}")
-            print(f"      [ERROR] Gemini API error: {e}")
-    else:
-        # 2 & 3. Local Browser Automation (NotebookLM & Gemini Gem)
-        logger.info("Starting Local Browser Automation session...")
-        print("\n[2/4] Connecting to Google Services via Local Chrome Profile...")
-        
-        with sync_playwright() as p:
-            try:
-                browser_context = p.chromium.launch_persistent_context(
-                    user_data_dir=PROFILE_DIR,
-                    channel="chrome",
-                    headless=False,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--start-minimized"
-                    ],
-                    viewport={"width": 1280, "height": 800}
-                )
-            except Exception as e:
-                logger.error(f"Failed to launch Chrome browser: {e}")
-                print(f"\n[ERROR] Failed to launch Chrome: {e}")
-                print("If Chrome is open with this profile, please close it and try again.")
-                return
-                
-            page = browser_context.new_page()
-            
-            # Step 2: Add source to NotebookLM
-            try:
-                print("\n[2/4] Adding episode story as source to NotebookLM...")
-                add_source_to_notebooklm(page, title, story_text)
-                print("      [OK] Successfully added to NotebookLM!")
-            except Exception as e:
-                logger.error(f"NotebookLM step failed: {e}")
-                print(f"      [NOTE] NotebookLM note: {e}")
-                
-            # Step 3: Generate response from Gemini Custom Gem
-            try:
-                print("\n[3/4] Generating summary/analysis from Gemini Custom Gem...")
-                gemini_result = generate_with_gemini_gem(page, story_text)
-                print("      [OK] Successfully received Gemini output!")
-            except Exception as e:
-                logger.error(f"Gemini Gem step failed: {e}")
-                print(f"      [NOTE] Gemini note: {e}")
-                
-            browser_context.close()
-        
-    # Step 4: Publish 12 Photo Cards + 4 Special Notes (including Note -3 for NotebookLM) to Prompt App
-    print(f"\n[4/4] Publishing 12 Cards & Special Notes to Prompt App...")
-    from create_12_cards import publish_all_12_cards
-    saved_to_app = publish_all_12_cards()
+    # Check if episode is from today (IST)
+    if not force and not is_episode_from_today(title, date_str):
+        today_formatted = datetime.now(IST).strftime("%d %B %Y")
+        logger.info(f"Today's episode ({today_formatted}) is not yet published. Latest found is: '{title}'.")
+        print(f"\n[WAITING] Today's episode ({today_formatted}) is not yet published on JustShowBiz.")
+        print(f"          Latest available: '{title}'")
+        print("          Will automatically check again on the next 15-minute interval (7:15, 7:30, 7:45, 8:00...).")
+        return
+
+    # Step 2: FIRST SAVE TO CLOUD (Publish 12 Cards + Special Notes including Card -3 to Prompt App & Google Docs)
+    print(f"\n[2/3] FIRST: Publishing Today's Episode & 12 Cards to Cloud (Prompt App)...")
+    saved_to_app = publish_all_12_cards(title=title, story_text=story_text, date_str=date_str)
     if saved_to_app:
-        print("      [OK] Successfully published 14 items to Prompt App and created Master Google Doc!")
+        print("      [OK] Successfully published to Prompt App and created Master Google Doc in Cloud!")
 
-    # Step 5: Optional Email Delivery
-    email_sent = send_email_report(title, date_str, gemini_result, link)
+    # Step 3: SECOND: Check NotebookLM (Quiet Exit if already uploaded by User, else Upload)
+    if not cloud_mode:
+        print("\n[3/3] SECOND: Connecting to NotebookLM via Local Chrome Profile...")
+        if sync_playwright:
+            try:
+                with sync_playwright() as p:
+                    browser_context = p.chromium.launch_persistent_context(
+                        user_data_dir=PROFILE_DIR,
+                        channel="chrome",
+                        headless=False,
+                        args=[
+                            "--disable-blink-features=AutomationControlled",
+                            "--start-minimized"
+                        ],
+                        viewport={"width": 1280, "height": 800}
+                    )
+                    page = browser_context.new_page()
+
+                    # add_source_to_notebooklm automatically checks check_if_source_exists!
+                    # If present: exits quietly without duplicate. If absent: uploads.
+                    try:
+                        print("      Checking if today's source exists in NotebookLM...")
+                        add_source_to_notebooklm(page, title, story_text)
+                    except Exception as e:
+                        logger.error(f"NotebookLM step note: {e}")
+                        print(f"      [NOTE] NotebookLM note: {e}")
+
+                    browser_context.close()
+            except Exception as e:
+                logger.warning(f"Browser launch note: {e}")
+                print(f"      [NOTE] Browser launch note: {e}")
+        else:
+            print("      Playwright not installed, skipping browser step.")
+    else:
+        print("\n[3/3] Running in Cloud Mode: Story saved to Cloud Archive (Browser sync will run when PC starts).")
+
+    # Step 4: Local report & optional email
+    email_sent = send_email_report(title, date_str, story_text, link)
     if email_sent:
         print("      [OK] Email delivered to Navinram022@gmail.com!")
     else:
-        print("      [INFO] Report also saved locally under reports/ folder.")
-        
+        print("      [INFO] Report saved locally under reports/ folder.")
+
     mark_run_completed(title, link)
     logger.info("Pipeline completed successfully!")
     print("\n==================================================")
-    print(">> All steps finished successfully!")
+    print(">> All steps finished successfully (Cloud First + NotebookLM Check)!")
     print("==================================================")
 
 if __name__ == "__main__":
     force_run = "--force" in sys.argv
-    run_pipeline(force=force_run)
+    cloud_run = "--cloud" in sys.argv
+    run_pipeline(force=force_run, cloud_mode=cloud_run)
