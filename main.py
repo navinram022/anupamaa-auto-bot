@@ -50,31 +50,81 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AnupamaaBot.Main")
 
+import urllib.request
+
+FIREBASE_PROJECT_ID = "neetu-prompts"
+FIREBASE_API_KEY = "AIzaSyD5gZr4s10roOThEeQjleJ5Sq7_rO6bA8E"
+FIRESTORE_STATE_URL = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/app_meta/anupamaa_state?key={FIREBASE_API_KEY}"
+
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def is_already_run_today() -> bool:
-    """Checks if the bot has already processed today's episode."""
-    if not os.path.exists(STATE_FILE):
-        return False
+    """Checks if the bot has already processed today's episode (Cloud Firestore + Local Cache)."""
+    today_str = datetime.now(IST).strftime("%Y-%m-%d")
+
+    # 1. Primary Check: Cloud Firestore (persists across all GitHub Actions cloud runs and local runs)
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            state = json.load(f)
-            today_str = datetime.now(IST).strftime("%Y-%m-%d")
-            return state.get("last_run_date") == today_str
-    except Exception:
-        return False
+        req = urllib.request.Request(FIRESTORE_STATE_URL)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            cloud_date = data.get("fields", {}).get("last_run_date", {}).get("stringValue", "")
+            if cloud_date == today_str:
+                logger.info(f"Cloud State Check: Today ({today_str}) has ALREADY been processed in Firestore.")
+                return True
+    except Exception as e:
+        logger.warning(f"Could not check Cloud Firestore state: {e}")
+
+    # 2. Secondary Check: Local State File
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                if state.get("last_run_date") == today_str:
+                    logger.info(f"Local State Check: Today ({today_str}) has ALREADY been processed.")
+                    return True
+        except Exception:
+            pass
+
+    return False
 
 def mark_run_completed(title: str, link: str):
-    """Saves the completion state for today."""
+    """Saves the completion state to both Local File and Cloud Firestore."""
     today_str = datetime.now(IST).strftime("%Y-%m-%d")
+    now_iso = datetime.now(IST).isoformat()
     state = {
         "last_run_date": today_str,
-        "completed_at": datetime.now(IST).isoformat(),
+        "completed_at": now_iso,
         "title": title,
         "link": link
     }
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
+
+    # 1. Save Local State File
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save local state: {e}")
+
+    # 2. Save Cloud Firestore State (locks Cloud GitHub Actions runner)
+    try:
+        payload = {
+            "fields": {
+                "last_run_date": {"stringValue": today_str},
+                "completed_at": {"stringValue": now_iso},
+                "title": {"stringValue": title},
+                "link": {"stringValue": link}
+            }
+        }
+        req = urllib.request.Request(
+            FIRESTORE_STATE_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="PATCH"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            logger.info("Successfully updated Cloud Firestore completion state!")
+    except Exception as e:
+        logger.error(f"Failed to save Cloud Firestore state: {e}")
 
 def is_episode_from_today(title: str, pub_date_str: str) -> bool:
     """Checks if the fetched episode corresponds to today's date in IST."""
