@@ -2,9 +2,13 @@ name: Anupamaa Daily AutoBot
 
 on:
   schedule:
-    # Runs every 15 minutes from 01:30 UTC (7:00 AM IST) to 05:30 UTC (11:00 AM IST)
-    - cron: '*/15 1-5 * * *'
+    # Runs every 15 minutes starting from 05:00 AM IST (23:30 UTC) to 11:00 AM IST (05:30 UTC)
+    - cron: '30,45 23 * * *'
+    - cron: '*/15 0-5 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   anupamaa-bot:
@@ -14,12 +18,27 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install beautifulsoup4 pypdf
+
       - name: Run Anupamaa Pipeline (Cloud Mode)
         run: |
           python main.py --cloud
+
+      - name: Commit and Push Updated Story Archive to Cloud
+        run: |
+          git config --global user.name "Anupamaa-CloudBot"
+          git config --global user.email "bot@anupamaa.auto"
+          git add reports/ last_run_state.json || true
+          git commit -m "Auto-Save Anupamaa Episode to Cloud Database [skip ci]" || exit 0
+          git push origin main || git push origin master || true
