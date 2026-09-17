@@ -297,26 +297,21 @@ def build_all_cards(gemini_text: str, today_title: str, today_story: str, date_s
     Constructs the list of cards for Firestore.
     Returns (cards_list, category_name, today_tag, video_content, polls_content)
     """
-    # Format date: e.g. "15 Sep 2026"
     dt = datetime.now()
-    try:
-        # Check if date_str has day and month
-        parts = date_str.split()
-        if len(parts) >= 3:
-            day = parts[0].zfill(2)
-            mon = parts[1][:3].capitalize()
-            year = parts[2]
-            short_date = f"{day} {mon} {year}"
-            tag_date = f"{day}{mon.lower()}"
-        else:
-            short_date = dt.strftime("%d %b %Y")
-            tag_date = dt.strftime("%d%b").lower()
-    except Exception:
-        short_date = dt.strftime("%d %b %Y")
-        tag_date = dt.strftime("%d%b").lower()
+    short_date = dt.strftime("%d %b %Y")
+    tag_date = dt.strftime("%d%b").lower()
+
+    combined_text = f"{today_title} {date_str}"
+    m = re.search(r'(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})', combined_text)
+    if m:
+        day = m.group(1).zfill(2)
+        mon = m.group(2)[:3].capitalize()
+        year = m.group(3)
+        short_date = f"{day} {mon} {year}"
+        tag_date = f"{day}{mon.lower()}"
 
     category_name = f"📅 {short_date} - अनुपमा 12 पोस्ट्स"
-    today_tag = f"card_{tag_date}"
+    today_tag = f"anu_card_{tag_date}"
 
     # Extract Video 1 & Polls
     vid_m = re.search(r'---\s*\[वीडियो 1\](.*?)(?=\n---\s*\[|\Z)', gemini_text, re.DOTALL)
@@ -397,19 +392,135 @@ def build_all_cards(gemini_text: str, today_title: str, today_story: str, date_s
     return cards, category_name, today_tag, video_content, polls_content
 
 def push_cards_to_firestore(cards: list, category_name: str) -> int:
-    """Pushes cards to Firestore under the given category."""
+    """DISABLED: Individual prompt cards are permanently disabled per user mandate. Only 5 clean Note Tiles are allowed."""
+    print("⚠️ Notice: Individual card publishing is permanently DISABLED per user mandate. Only 5 Note Tiles are published.")
+    return 0
+
+
+def clean_photo_text(raw_text: str) -> str:
+    """Cleans technical labels and markdown stars from photo text for Note 4."""
+    if not raw_text:
+        return ""
+    # Strip markdown bold/stars
+    text = re.sub(r'\*+', '', raw_text)
+    cleaned_lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Remove label prefixes like 'हेडिंग:', 'सबहेडिंग:', 'डायलॉग 1:', 'बुलेट 1:', 'कॉल-टू-एक्शन:', 'सीटीए:', 'CTA:'
+        line = re.sub(
+            r'^(?:हेडिंग\s*\d*|सबहेडिंग|मुख्य\s*हेडिंग|डायलॉग\s*\d*|बुलेट\s*\d*|कॉल-टू-एक्शन|सीटीए|CTA|लाइन\s*\d*|पॉइंट\s*\d*)\s*[:：\-]\s*',
+            '',
+            line,
+            flags=re.IGNORECASE
+        )
+        line = line.strip()
+        if line:
+            cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
+
+
+def build_all_photo_texts_note(posts_data: dict, short_date: str, episode_title: str) -> str:
+    """Builds the comprehensive, decorated Note 4 containing all 12 photo texts cleanly."""
+    header = f"""╔══════════════════════════════════════════════════════════════════════════════╗
+║  🖼️ अनुपमा — आज के सभी 12 फोटो पर लिखे जाने वाले शुद्ध टेक्स्ट               ║
+║  📅 {short_date} | एपिसोड: {episode_title}                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📌 निर्देश: इन 12 पोस्ट्स के फोटो टेक्स्ट को आप सीधे अपनी फोटो/इमेज डिज़ाइन में इस्तेमाल कर सकते हैं।
+"""
+    blocks = [header]
+    for num in range(1, 13):
+        title = POST_TITLES.get(num, f"पोस्ट {num:02d}")
+        raw_p = posts_data.get(num, {}).get("photo_text", "")
+        cleaned = clean_photo_text(raw_p)
+        block = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📸 [{title}]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{cleaned}
+"""
+        blocks.append(block)
+    return "\n".join(blocks)
+
+
+def push_five_notes_to_app(category_name: str, today_tag: str, short_date: str, episode_title: str, story_text: str, video_content: str, polls_content: str, posts_data: dict) -> int:
+    """
+    Publishes strictly the 5 clean Note Tiles to Firestore for Prompt App.
+    Ensures that ALL cards in the category have isNote: True so Prompt App renders
+    the clean 5-tile note box grid without any individual prompt card clutter.
+    """
     now_ms = str(int(time.time() * 1000))
-    success_count = 0
+
+    # Note -3: Full Written Update (NotebookLM)
+    note_minus_3_content = f"""╔══════════════════════════════════════════════════════════════════════════════╗
+║  📖 आज का लिखित अपडेट : सीधे JustShowBiz वेबसाइट से कॉपी किया गया कंटेंट      ║
+║  📅 {short_date} | NotebookLM में नया सोर्स जोड़ने के लिए यहाँ से कॉपी करें     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📌 निर्देश: नीचे दिए गए पूरे टेक्स्ट को कॉपी करें और अपने मोबाइल या लैपटॉप में खुले NotebookLM में 'Add Source' ➔ 'Copied Text' करके पेस्ट कर दें।
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{episode_title}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{story_text}
+"""
+
+    # Note 0: 12 Fresh Viral Post Ideas (guaranteed 7-day rolling non-repeating)
+    try:
+        from viral_ideas_tracker import build_decorated_viral_ideas_note
+        viral_ideas_text, _ = build_decorated_viral_ideas_note(short_date, episode_title)
+    except Exception as e:
+        print(f"Viral tracker fallback: {e}")
+        viral_ideas_text = "12 वायरल पोस्ट आइडियाज"
+
+    # Note 1: All 12 Photo Texts Compiled Cleanly
+    all_photo_texts_content = build_all_photo_texts_note(posts_data, short_date, episode_title)
+
+    five_notes = [
+        {
+            "id": f"{today_tag}_note_today_written_update",
+            "title": "📖 आज का लिखित अपडेट (वेबसाइट से कॉपी - NotebookLM हेतु)",
+            "prompt": note_minus_3_content,
+            "order": -3
+        },
+        {
+            "id": f"{today_tag}_note_video_vo",
+            "title": "🎬 स्पेशल नोट 1: 3 मिनट लॉन्ग वीडियो व वॉइसओवर स्क्रिप्ट",
+            "prompt": video_content,
+            "order": -2
+        },
+        {
+            "id": f"{today_tag}_note_polls",
+            "title": "📊 स्पेशल नोट 2: 5 फेसबुक पोल पोस्ट्स",
+            "prompt": polls_content,
+            "order": -1
+        },
+        {
+            "id": f"{today_tag}_note_viral_ideas",
+            "title": "📝 स्पेशल नोट 3: 12+ नए वायरल पोस्ट आइडियाज (Viral Concepts Beyond 12)",
+            "prompt": viral_ideas_text,
+            "order": 0
+        },
+        {
+            "id": f"{today_tag}_note_all_photo_texts",
+            "title": "🖼️ स्पेशल नोट 4: सभी 12 फोटो पर लिखे जाने वाले टेक्स्ट",
+            "prompt": all_photo_texts_content,
+            "order": 1
+        }
+    ]
+
     print("=" * 60)
-    print(f"🚀 Publishing {len(cards)} Cards to Category: '{category_name}'")
+    print(f"🚀 Publishing 5 Clean Note Tiles to Category: '{category_name}'")
     print("=" * 60)
 
-    for card in cards:
-        doc_id = card["id"]
-        title = card["title"]
-        prompt = card.get("prompt", "").strip()
-        photo_text = card.get("photoText", "").strip()
-        order_num = card.get("num", 0)
+    success_count = 0
+    for note in five_notes:
+        doc_id = note["id"]
+        title = note["title"]
+        order_num = note["order"]
+        prompt = note["prompt"]
 
         payload = {
             "fields": {
@@ -417,10 +528,10 @@ def push_cards_to_firestore(cards: list, category_name: str) -> int:
                 "title": {"stringValue": title},
                 "category": {"stringValue": category_name},
                 "basePrompt": {"stringValue": prompt},
-                "photoText": {"stringValue": photo_text},
-                "caption": {"stringValue": card.get("caption", "").strip()},
+                "photoText": {"stringValue": title},
+                "caption": {"stringValue": title},
                 "order": {"integerValue": str(order_num)},
-                "isNote": {"booleanValue": bool(card.get("isNote", False))},
+                "isNote": {"booleanValue": True},
                 "createdAt": {"integerValue": now_ms},
                 "updatedAt": {"integerValue": now_ms},
                 "layers": {"arrayValue": {"values": []}}
@@ -429,70 +540,18 @@ def push_cards_to_firestore(cards: list, category_name: str) -> int:
 
         url = f"{FIRESTORE_CARDS_URL}/{doc_id}?key={FIREBASE_API_KEY}"
         data_bytes = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data_bytes,
-            headers={"Content-Type": "application/json"},
-            method="PATCH"
-        )
+        req = urllib.request.Request(url, data=data_bytes, headers={"Content-Type": "application/json"}, method="PATCH")
 
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
-                print(f"✅ Card {order_num:02d}: '{title}' successfully saved!")
+                print(f"✅ Note Tile [Order {order_num:>2}]: '{title}' successfully published!")
                 success_count += 1
         except Exception as e:
-            print(f"❌ Card {order_num:02d}: '{title}' FAILED! Error: {e}")
+            print(f"❌ Note Tile [Order {order_num:>2}]: '{title}' FAILED! Error: {e}")
 
-    print(f"\n🎉 Finished: {success_count}/{len(cards)} cards pushed to Firestore under '{category_name}'!")
+    print(f"\n🎉 Finished: {success_count}/5 Note Tiles published under '{category_name}'!")
     return success_count
 
-def push_special_notes_to_app(video_content: str, polls_content: str, category_name: str, today_tag: str):
-    """Pushes Video 1 and Polls notes into Firestore."""
-    if not video_content and not polls_content:
-        return
-
-    now_ms = str(int(time.time() * 1000))
-    special_notes = []
-    if video_content:
-        special_notes.append({
-            "id": f"{today_tag}_note_video",
-            "title": "🎬 स्पेशल नोट 1: 3 मिनट लॉन्ग वीडियो व वॉइसओवर स्क्रिप्ट",
-            "prompt": video_content,
-            "order": -2
-        })
-    if polls_content:
-        special_notes.append({
-            "id": f"{today_tag}_note_polls",
-            "title": "📊 स्पेशल नोट 2: 5 फेसबुक पोल पोस्ट्स",
-            "prompt": polls_content,
-            "order": -1
-        })
-
-    for note in special_notes:
-        doc_id = note["id"]
-        title = note["title"]
-        payload = {
-            "fields": {
-                "id": {"stringValue": doc_id},
-                "title": {"stringValue": title},
-                "category": {"stringValue": category_name},
-                "basePrompt": {"stringValue": note["prompt"]},
-                "photoText": {"stringValue": title},
-                "caption": {"stringValue": title},
-                "order": {"integerValue": str(note["order"])},
-                "isNote": {"booleanValue": True},
-                "createdAt": {"integerValue": now_ms},
-                "updatedAt": {"integerValue": now_ms},
-                "layers": {"arrayValue": {"values": []}}
-            }
-        }
-        url = f"{FIRESTORE_CARDS_URL}/{doc_id}?key={FIREBASE_API_KEY}"
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="PATCH")
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                print(f"✅ Note '{title}' successfully saved!")
-        except Exception as e:
-            print(f"Note save error: {e}")
 
 def run_daily_cards_pipeline(gemini_output_file: str = "today_gemini_output.txt") -> bool:
     """Main function to run complete cards publishing pipeline."""
@@ -519,26 +578,36 @@ def run_daily_cards_pipeline(gemini_output_file: str = "today_gemini_output.txt"
 
     print(f"3. Building cards from Gemini output ({len(gemini_text)} chars)...")
     cards, category_name, today_tag, video_content, polls_content = build_all_cards(gemini_text, title, story_text, date_str)
+    posts_data = parse_posts_from_gemini(gemini_text)
 
-    print(f"4. Pushing cards to Firestore...")
-    count = push_cards_to_firestore(cards, category_name)
-    push_special_notes_to_app(video_content, polls_content, category_name, today_tag)
+    # Short date e.g. "16 Sep 2026"
+    m = re.search(r'(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})', title)
+    clean_date = f"{m.group(1)} {m.group(2)} {m.group(3)}" if m else datetime.now().strftime("%d %B %Y")
 
-    # 5. Sync to Google Doc
+    print(f"4. Pushing 5 Clean Note Tiles to Firestore (No individual card clutter)...")
+    count = push_five_notes_to_app(
+        category_name=category_name,
+        today_tag=today_tag,
+        short_date=clean_date,
+        episode_title=title,
+        story_text=story_text,
+        video_content=video_content,
+        polls_content=polls_content,
+        posts_data=posts_data
+    )
+
+    # 5. Sync to Google Doc with complete package (all 12 cards + scripts + polls)
     try:
         from gdocs_service import send_to_google_docs, format_master_gdoc_content
         print(f"\n5. Generating Master Google Doc via Webhook...")
-        gdoc_text = format_master_gdoc_content(date_str, polls_content, video_content, cards)
+        gdoc_text = format_master_gdoc_content(clean_date, polls_content, video_content, cards)
         doc_url = send_to_google_docs(f"{category_name} - संपूर्ण एपिसोड ड्राफ्ट", gdoc_text)
         if doc_url:
             print(f"✅ Master Google Doc successfully created: {doc_url}")
     except Exception as ge:
         print(f"Note: Google Doc sync note: {ge}")
 
-    return count >= 12
-
-if __name__ == "__main__":
-    run_daily_cards_pipeline()
+    return count >= 5
 
 
 def publish_all_12_cards(gemini_text: str = None, title: str = None, story_text: str = None, date_str: str = None) -> bool:
@@ -550,7 +619,6 @@ def publish_all_12_cards(gemini_text: str = None, title: str = None, story_text:
         if not date_str:
             date_str = story_data.get("date", "")
 
-    # Extract date from title: e.g. "Anupama 15th September 2026 Written Update" -> "15 September 2026"
     m = re.search(r'(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})', title)
     if m:
         clean_date = f"{m.group(1)} {m.group(2)} {m.group(3)}"
@@ -562,8 +630,19 @@ def publish_all_12_cards(gemini_text: str = None, title: str = None, story_text:
         gemini_text = generate_with_gemini_api(story_text, clean_date)
 
     cards, category_name, today_tag, video_content, polls_content = build_all_cards(gemini_text, title, story_text, clean_date)
-    count = push_cards_to_firestore(cards, category_name)
-    push_special_notes_to_app(video_content, polls_content, category_name, today_tag)
+    posts_data = parse_posts_from_gemini(gemini_text)
+
+    # Push strictly the 5 Note Tiles
+    count = push_five_notes_to_app(
+        category_name=category_name,
+        today_tag=today_tag,
+        short_date=clean_date,
+        episode_title=title,
+        story_text=story_text,
+        video_content=video_content,
+        polls_content=polls_content,
+        posts_data=posts_data
+    )
 
     try:
         from gdocs_service import send_to_google_docs, format_master_gdoc_content
@@ -572,4 +651,9 @@ def publish_all_12_cards(gemini_text: str = None, title: str = None, story_text:
     except Exception as ge:
         print(f"Google Doc sync note: {ge}")
 
-    return count >= 12
+    return count >= 5
+
+
+if __name__ == "__main__":
+    run_daily_cards_pipeline()
+
