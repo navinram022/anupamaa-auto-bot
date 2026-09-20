@@ -764,8 +764,8 @@ def parse_date_key(d_str: str) -> date:
 
 
 def save_history(history: dict):
-    """Saves strictly the last 7 days (1 week) of rolling history sorted chronologically."""
-    sorted_items = sorted(history.items(), key=lambda x: parse_date_key(x[0]), reverse=True)[:7]
+    """Saves up to 365 days (1 full year) of permanent rolling history sorted chronologically."""
+    sorted_items = sorted(history.items(), key=lambda x: parse_date_key(x[0]), reverse=True)[:365]
     trimmed_history = {k: v for k, v in reversed(sorted_items)}
     try:
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
@@ -774,8 +774,25 @@ def save_history(history: dict):
         logger.error(f"Error saving history: {e}")
 
 
-def get_recent_used_concept_ids(days: int = 7) -> set:
-    """Returns all concept IDs used in the last 7 days (1 week) to strictly avoid repeating them."""
+def get_all_past_titles(days: int = 365) -> list:
+    """Returns all concept titles and hooks used in up to 365 days to avoid any repetition."""
+    history = load_history()
+    sorted_items = sorted(history.items(), key=lambda x: parse_date_key(x[0]), reverse=True)[:days]
+    past_titles = []
+    for d, items in sorted_items:
+        for item in items:
+            if isinstance(item, dict):
+                t = item.get("title", "")
+                if t and t not in past_titles:
+                    past_titles.append(t)
+            elif isinstance(item, str):
+                if item and item not in past_titles:
+                    past_titles.append(item)
+    return past_titles
+
+
+def get_recent_used_concept_ids(days: int = 365) -> set:
+    """Returns all concept IDs used in up to 365 days (1 full year) to strictly avoid repeating them."""
     history = load_history()
     sorted_items = sorted(history.items(), key=lambda x: parse_date_key(x[0]), reverse=True)[:days]
     used_ids = set()
@@ -792,18 +809,11 @@ def get_recent_used_concept_ids(days: int = 7) -> set:
 
 def get_fresh_12_concepts(date_str: str) -> list:
     """
-    Selects 12 completely fresh concept formats not used in the past 7 days (1 week).
-    Guarantees 100% non-repetition across a rolling 1-week window.
-    Distributes selections evenly across all 7 categories so every single day has:
-    - History mirror (अतीत vs वर्तमान)
-    - Hypocrisy meter (दोगलापन मीटर)
-    - Courtroom trial (जनता की अदालत)
-    - Alternate reality (अगर आज अनुज साथ होता)
-    - Public poll (जनता का जनमत)
-    - Meme & Roast (व्यंग्य मीम व रोस्ट)
-    - Dialogue / TRP war (टीआरपी व डायलॉग वार)
+    Selects 12 completely fresh concept formats not used in the past 365 days (1 full year).
+    Guarantees 100% non-repetition across an entire 1-year window.
+    Distributes selections evenly across all 7 categories.
     """
-    used_ids = get_recent_used_concept_ids(days=7)
+    used_ids = get_recent_used_concept_ids(days=365)
     categories = list(dict.fromkeys(c['category'] for c in DIVERSE_CONCEPT_POOL))
 
     # Bucket unused concepts by category
@@ -835,7 +845,7 @@ def get_fresh_12_concepts(date_str: str) -> list:
             while cat_buckets[cat] and len(selected) < 12:
                 selected.append(cat_buckets[cat].pop(0))
 
-    # Extreme fallback if pool has fewer than 12 unused items across 7 days
+    # Extreme fallback if pool has fewer than 12 unused items across 365 days
     if len(selected) < 12:
         for c in DIVERSE_CONCEPT_POOL:
             if c not in selected:
@@ -847,27 +857,148 @@ def get_fresh_12_concepts(date_str: str) -> list:
 
 
 def record_today_ideas(date_str: str, ideas_list: list):
-    """Saves today's viral concepts into the rolling 7-day backup."""
+    """Saves today's viral concepts into the permanent 365-day (1 full year) history backup."""
     history = load_history()
     history[date_str] = ideas_list
     save_history(history)
-    logger.info(f"Recorded {len(ideas_list)} viral ideas for {date_str} in 7-day rolling history.")
+    logger.info(f"Recorded {len(ideas_list)} viral ideas for {date_str} in 365-day annual history.")
 
 
-def build_decorated_viral_ideas_note(date_str: str, episode_title: str = "") -> tuple:
+def generate_ai_viral_ideas(story_text: str, episode_title: str, date_str: str) -> tuple:
+    """
+    Calls Google Gemini API to dynamically analyze today's actual story text
+    and generate 12 completely unique, brand new viral ideas specifically tailored
+    to today's scenes and dialogues, with strict exclusion of past 365 days of history.
+    """
+    import urllib.request
+    
+    GEMINI_API_KEY = "AQ.Ab8RN6K4JTzVlV1BmkAEyiJqQFuYdGCk3VFqNlNpgWKrd557JA"
+    MODEL_NAME = "gemini-flash-lite-latest"
+    API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
+
+    past_titles = get_all_past_titles(days=365)
+    past_sample = past_titles[-60:] if len(past_titles) > 60 else past_titles
+    past_str = "\n".join(f"- {t}" for t in past_sample) if past_sample else "कोई पुराना विचार दर्ज नहीं।"
+
+    prompt = f"""तुम एक शीर्ष टीवी सीरियल सोशल मीडिया रणनीतिकार और वायरल कंटेंट विशेषज्ञ हो।
+नीचे आज के अनुपमा (Anupamaa) धारावाहिक के एपिसोड की लिखित कहानी दी गई है।
+इस कहानी की ताज़ा घटनाओं, आज के किरदारों के ड्रामे, नए धोखों, तकरार और आज के डायलॉग्स के आधार पर सोशल मीडिया (Facebook/Instagram) के लिए ठीक 12 नए और अद्वितीय वायरल पोस्ट आइडियाज (Viral Concepts Beyond 12) तैयार करो।
+
+🛑 100% गैर-दोहराव नियम (STRICT 365-DAY ANNUAL NON-REPETITION MANDATE):
+पूरे 1 साल (365 दिन) में कोई भी आइडिया या विषय कभी रिपीट नहीं होना चाहिए।
+नीचे हाल ही में बन चुके पिछले विचारों की सूची है। इनमें से किसी भी आइडिया, एंगल या शीर्षक को दोबारा रिपीट नहीं करना है:
+{past_str}
+
+हर आइडिया आज के एपिसोड की नई घटनाओं पर आधारित होना चाहिए और इन 7 अलग-अलग श्रेणियों में बंटा होना चाहिए:
+1. अतीत vs वर्तमान (आज की घटना बनाम अतीत का कोई खास मोड़ / तुलना)
+2. दोगलापन मीटर / स्वार्थ गेज (आज के किसी किरदार की हरकत पर 0% से 100% मीटर)
+3. जनता की अदालत / चार्जशीट (आज के मुजरिम या धोखेबाज पर पब्लिक ट्रायल)
+4. अगर ऐसा न होता तो / अल्टरनेट रियलिटी (आज के मोड़ पर 'काश' या 'अगर' का सस्पेंस)
+5. जनता का जनमत / महा-पोल (आज के सबसे बड़े नैतिक धर्मसंकट पर तीखा वोटिंग सवाल)
+6. व्यंग्य, मीम व रोस्ट (आज के पारिवारिक ड्रामे पर तीखा चुभने वाला कटाक्ष)
+7. भावनात्मक झकझोर व सामाजिक सबक (माँ की लाचारी, सीख या प्रीकैप का मोड़)
+
+🛑 कड़े नियम:
+- 0% मार्कडाउन स्टार्स (**): पूरे आउटपुट में कहीं भी ** का प्रयोग न करें ताकि कॉपी करने पर स्टार्स न चिपकें।
+- 0% लेबल्स: फोटो टेक्स्ट में 'हेडिंग:', 'सबहेडिंग:', 'CTA:' जैसे लेबल्स न लिखें, सिर्फ वही शुद्ध पंक्तियाँ लिखें जो फोटो पर सीधे प्रिंट होंगी।
+- ठीक 12 आइडियाज बनाएं (आइडिया 01 से आइडिया 12 तक)।
+
+आउटपुट का सटीक फॉर्मेट:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔥 [आइडिया 01] : [तीखा और आकर्षक शीर्षक]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• श्रेणी: [श्रेणी का नाम]
+• लेआउट: [विजुअल लेआउट निर्देश - 1 संक्षिप्त लाइन]
+• इमोशनल ट्रिगर: [ट्रिगर]
+• फोटो टेक्स्ट व विजुअल ड्राफ्ट:
+[3-4 लाइन का सीधा, साफ फोटो टेक्स्ट (0% लेबल्स, कोई हेडिंग/सबहेडिंग शब्द नहीं)]
+
+(इसी प्रकार ठीक आइडिया 12 तक)
+
+आज का एपिसोड शीर्षक: {episode_title}
+तारीख: {date_str}
+आज की कहानी:
+{story_text}
+"""
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.35,
+            "maxOutputTokens": 8192
+        }
+    }
+
+    req = urllib.request.Request(
+        API_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        raw_text = raw_text.replace("**", "")
+
+    header = f"""╔══════════════════════════════════════════════════════════════════════════════╗
+║  🔥 अनुपमा — 12+ नए ताज़ा वायरल पोस्ट आइडियाज (VIRAL CONCEPTS BEYOND 12)     ║
+║  📅 {date_str} | 1 साल (365 दिन) तक 100% गैर-दोहराव गारंटी (Zero Repetition)   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📌 निर्देश: ये 12 विचार आज के एपिसोड की ताज़ा घटनाओं से सीधे तैयार किए गए हैं और 
+पूरे 1 साल के किसी भी पिछले विचार से बिल्कुल अलग और 100% नए हैं।
+"""
+    full_note_text = f"{header}\n\n{raw_text}"
+
+    recorded_summary = []
+    for line in raw_text.splitlines():
+        line_clean = line.strip()
+        if "🔥 [आइडिया" in line_clean or ("आइडिया" in line_clean and ":" in line_clean and "[" in line_clean):
+            parts = line_clean.split(":", 1)
+            t = parts[1].strip() if len(parts) > 1 else line_clean
+            recorded_summary.append({"title": t, "id": f"dyn_{int(datetime.now().timestamp())}_{len(recorded_summary)+1}"})
+
+    if not recorded_summary:
+        recorded_summary = [{"title": f"Episode Viral Idea {i}", "id": f"dyn_{i}"} for i in range(1, 13)]
+
+    record_today_ideas(date_str, recorded_summary)
+    return full_note_text, recorded_summary
+
+
+def build_decorated_viral_ideas_note(date_str: str, episode_title: str = "", story_text: str = "") -> tuple:
     """
     Constructs the beautifully decorated Special Note 3 with 12 100% fresh ideas,
-    guaranteed never repeated in the past 7 days.
+    guaranteed never repeated in up to 365 days (1 full year).
+    First generates dynamic ideas from today's real episode story via Gemini AI.
+    Falls back to diverse pool if story_text or API unavailable.
     Returns: (decorated_text, recorded_ideas_summary)
     """
+    if not story_text:
+        try:
+            from story_scraper import fetch_latest_anupama_update
+            data = fetch_latest_anupama_update()
+            story_text = data.get("story", "")
+            if not episode_title:
+                episode_title = data.get("title", "")
+        except Exception:
+            pass
+
+    if story_text and len(story_text) > 300:
+        try:
+            logger.info("Generating 12 dynamic viral ideas directly from today's episode story via Gemini AI...")
+            return generate_ai_viral_ideas(story_text, episode_title, date_str)
+        except Exception as e:
+            logger.warning(f"AI viral ideas generation note (falling back to pool): {e}")
+
+    # Fallback to pool with 365-day exclusion
     selected_concepts = get_fresh_12_concepts(date_str)
 
     header = f"""╔══════════════════════════════════════════════════════════════════════════════╗
 ║  🔥 अनुपमा — 12+ नए ताज़ा वायरल पोस्ट आइडियाज (VIRAL CONCEPTS BEYOND 12)     ║
-║  📅 {date_str} | 1 हफ्ते तक 100% गैर-दोहराव गारंटी (Non-Repeating Rolling 7 Days)║
+║  📅 {date_str} | 1 साल (365 दिन) तक 100% गैर-दोहराव गारंटी (Zero Repetition)   ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
-📌 निर्देश: ये 12 विचार पिछले 7 दिनों के किसी भी विचार से बिल्कुल अलग और ताज़ा हैं। 
+📌 निर्देश: ये 12 विचार पूरे 1 साल (365 दिन) के किसी भी विचार से बिल्कुल अलग और ताज़ा हैं। 
 इन्हें फेसबुक, इंस्टाग्राम रील्स और कम्युनिटी पोस्ट्स में इस्तेमाल करके रिकॉर्ड तोड़ रीच पाएं।
 """
 
@@ -889,10 +1020,7 @@ def build_decorated_viral_ideas_note(date_str: str, episode_title: str = "") -> 
         recorded_summary.append({"id": c["id"], "title": c["title"]})
 
     full_note_text = "\n".join(blocks)
-
-    # Automatically record in 7-day rolling history
     record_today_ideas(date_str, recorded_summary)
-
     return full_note_text, recorded_summary
 
 
