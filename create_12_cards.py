@@ -467,10 +467,10 @@ def push_five_notes_to_app(category_name: str, today_tag: str, short_date: str, 
 {story_text}
 """
 
-    # Note 0: 12 Fresh Viral Post Ideas (guaranteed 7-day rolling non-repeating)
+    # Note 0: 12 Fresh Viral Post Ideas (guaranteed 365-day annual non-repeating directly from story)
     try:
         from viral_ideas_tracker import build_decorated_viral_ideas_note
-        viral_ideas_text, _ = build_decorated_viral_ideas_note(short_date, episode_title)
+        viral_ideas_text, _ = build_decorated_viral_ideas_note(short_date, episode_title, story_text=story_text)
     except Exception as e:
         print(f"Viral tracker fallback: {e}")
         viral_ideas_text = "12 वायरल पोस्ट आइडियाज"
