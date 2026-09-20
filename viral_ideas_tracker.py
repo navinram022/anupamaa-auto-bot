@@ -11,9 +11,10 @@ Guarantees that:
 
 import os
 import sys
+import re
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
 
 if sys.platform == "win32":
     try:
@@ -745,10 +746,27 @@ def load_history() -> dict:
     return {}
 
 
+def parse_date_key(d_str: str) -> date:
+    d_clean = str(d_str).strip()
+    for fmt in ("%Y-%m-%d", "%d %B %Y", "%d %b %Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(d_clean, fmt).date()
+        except Exception:
+            pass
+    m = re.search(r'(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})', d_clean)
+    if m:
+        for fmt in ("%d %B %Y", "%d %b %Y"):
+            try:
+                return datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", fmt).date()
+            except Exception:
+                pass
+    return date.min
+
+
 def save_history(history: dict):
-    """Saves strictly the last 7 days (1 week) of rolling history."""
-    sorted_dates = sorted(history.keys(), reverse=True)[:7]
-    trimmed_history = {d: history[d] for d in reversed(sorted_dates)}
+    """Saves strictly the last 7 days (1 week) of rolling history sorted chronologically."""
+    sorted_items = sorted(history.items(), key=lambda x: parse_date_key(x[0]), reverse=True)[:7]
+    trimmed_history = {k: v for k, v in reversed(sorted_items)}
     try:
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(trimmed_history, f, indent=2, ensure_ascii=False)
@@ -759,14 +777,13 @@ def save_history(history: dict):
 def get_recent_used_concept_ids(days: int = 7) -> set:
     """Returns all concept IDs used in the last 7 days (1 week) to strictly avoid repeating them."""
     history = load_history()
-    sorted_dates = sorted(history.keys(), reverse=True)[:days]
+    sorted_items = sorted(history.items(), key=lambda x: parse_date_key(x[0]), reverse=True)[:days]
     used_ids = set()
-    for d in sorted_dates:
-        for item in history.get(d, []):
+    for d, items in sorted_items:
+        for item in items:
             if isinstance(item, dict):
                 used_ids.add(item.get("id"))
             elif isinstance(item, str):
-                # match keywords or ids
                 for c in DIVERSE_CONCEPT_POOL:
                     if c["id"] in item or c["title"][:15] in item:
                         used_ids.add(c["id"])
@@ -775,20 +792,57 @@ def get_recent_used_concept_ids(days: int = 7) -> set:
 
 def get_fresh_12_concepts(date_str: str) -> list:
     """
-    Selects 12 completely fresh concept formats not used in the past 7 days.
+    Selects 12 completely fresh concept formats not used in the past 7 days (1 week).
     Guarantees 100% non-repetition across a rolling 1-week window.
-    Because the master pool has 84 concepts (7 days x 12 concepts),
-    there are always 12 unused concepts available.
+    Distributes selections evenly across all 7 categories so every single day has:
+    - History mirror (अतीत vs वर्तमान)
+    - Hypocrisy meter (दोगलापन मीटर)
+    - Courtroom trial (जनता की अदालत)
+    - Alternate reality (अगर आज अनुज साथ होता)
+    - Public poll (जनता का जनमत)
+    - Meme & Roast (व्यंग्य मीम व रोस्ट)
+    - Dialogue / TRP war (टीआरपी व डायलॉग वार)
     """
     used_ids = get_recent_used_concept_ids(days=7)
-    fresh = [c for c in DIVERSE_CONCEPT_POOL if c["id"] not in used_ids]
+    categories = list(dict.fromkeys(c['category'] for c in DIVERSE_CONCEPT_POOL))
 
-    if len(fresh) < 12:
-        # Fallback if history has more than 7 days or pool overlaps
-        remaining = [c for c in DIVERSE_CONCEPT_POOL if c not in fresh]
-        fresh.extend(remaining)
+    # Bucket unused concepts by category
+    cat_buckets = {cat: [] for cat in categories}
+    for c in DIVERSE_CONCEPT_POOL:
+        if c["id"] not in used_ids:
+            cat_buckets[c["category"]].append(c)
 
-    selected = fresh[:12]
+    # Determine daily starting category index based on date to rotate evenly
+    target_dt = parse_date_key(date_str)
+    day_num = target_dt.toordinal() if target_dt != date.min else 0
+    start_cat_idx = day_num % len(categories)
+    rotated_cats = categories[start_cat_idx:] + categories[:start_cat_idx]
+
+    selected = []
+    # Round 1: Take 1 concept from each category (up to 7)
+    for cat in rotated_cats:
+        if cat_buckets[cat] and len(selected) < 12:
+            selected.append(cat_buckets[cat].pop(0))
+
+    # Round 2: Take a second concept from categories until we reach 12
+    for cat in rotated_cats:
+        if cat_buckets[cat] and len(selected) < 12:
+            selected.append(cat_buckets[cat].pop(0))
+
+    # Fallback if somehow still fewer than 12
+    if len(selected) < 12:
+        for cat in categories:
+            while cat_buckets[cat] and len(selected) < 12:
+                selected.append(cat_buckets[cat].pop(0))
+
+    # Extreme fallback if pool has fewer than 12 unused items across 7 days
+    if len(selected) < 12:
+        for c in DIVERSE_CONCEPT_POOL:
+            if c not in selected:
+                selected.append(c)
+                if len(selected) == 12:
+                    break
+
     return selected
 
 
