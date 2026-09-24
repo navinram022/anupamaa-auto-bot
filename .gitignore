@@ -4,3 +4,4 @@ logs/
 reports/
 scratch/
 *.pyc
+gemini_key.txt
