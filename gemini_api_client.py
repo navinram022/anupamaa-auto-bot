@@ -11,6 +11,7 @@ Generates:
 6. [गहरा विश्लेषण] चरण 2 विश्लेषण
 """
 
+import os
 import json
 import urllib.request
 import logging
@@ -18,7 +19,15 @@ from config import BASE_DIR
 
 logger = logging.getLogger("AnupamaaBot.GeminiAPI")
 
-GEMINI_API_KEY = "AQ.Ab8RN6K4JTzVlV1BmkAEyiJqQFuYdGCk3VFqNlNpgWKrd557JA"
+LOCAL_KEY_FILE = os.path.join(BASE_DIR, "gemini_key.txt")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+if not GEMINI_API_KEY and os.path.exists(LOCAL_KEY_FILE):
+    try:
+        with open(LOCAL_KEY_FILE, "r", encoding="utf-8") as f:
+            GEMINI_API_KEY = f.read().strip()
+    except Exception:
+        pass
+
 MODEL_NAME = "gemini-flash-lite-latest"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 
