@@ -33,6 +33,8 @@ jobs:
           pip install beautifulsoup4 pypdf
 
       - name: Run Anupamaa Pipeline (Cloud Mode)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python main.py --cloud --force
 
