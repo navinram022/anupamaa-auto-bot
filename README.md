@@ -1,41 +1,26 @@
-# 🌟 Anupamaa Automation (अनुपमा ऑटोमेशन) - सम्पूर्ण स्वतंत्र प्रोजेक्ट
+# Anupama Master Automation Project
 
-यह फोल्डर अनुपमा धारावाहिक के दैनिक ऑटोमेशन का **पूर्णतः स्वतंत्र (Self-Contained & Portable)** प्रोजेक्ट फोल्डर है।
-इस फोल्डर को आप कहीं भी मूव कर सकते हैं, इसमें सभी जरूरी फाइलें, नियम, मास्टर पीडीएफ और स्क्रिप्ट्स एक ही जगह मौजूद हैं।
+यह इस पूरे प्रोजेक्ट का मुख्य (All-in-One) मास्टर फ़ोल्डर है।
 
----
+## फ़ोल्डर संरचना (Folder Structure):
 
-## 🚀 मुख्य 1-क्लिक लॉन्चर्स (Runners):
-
-1. **`Process_Today_Anupama.bat`** (मुख्य दैनिक ऑटोमेशन):
-   - **स्टेप 1:** RSS से आज की कहानी निकालता है, कचरा/विज्ञापन साफ करता है और **तारीख सहित हेडिंग** के साथ NotebookLM में सोर्स जोड़ देता है।
-   - **स्टेप 2:** सीधे Prompt App में 12 फोटो पोस्ट कार्ड्स + स्पेशल नोट्स पब्लिश कर देता है।
-   - *कोई ईमेल नहीं, कोई जेमिनी नहीं — सीधा 2-स्टेप सुपरफास्ट फ्लो।*
-
-2. **`Install_Daily_Task.bat`**:
-   - विंडोज टास्क शेड्यूलर में रोज़ाना सुबह 9:00 बजे अपने आप चलने वाला टास्क रजिस्टर करता है।
-
-3. **`Setup_Google_Login.bat`**:
-   - अगर कभी गूगल अकाउंट लॉगआउट हो जाए, तो इसे चलाकर एक बार लॉगिन कर सकते हैं।
+1. **`.agents/`** - Antigravity AI Custom Skills (`daily-post`, `stock-post`, `viral-ideas`)।
+2. **`01_Launchers_and_Automation/`** - सभी एक्टिव डेस्कटॉप Bat फाइल्स और ऑटोमेशन स्क्रिप्ट्स (`auto_fill_all_prompts.py`, `auto_fill_reels.py`, `auto_fill_round2.py`, आदि)।
+3. **`02_Story_Archive_and_Rules/`** - कहानी का संपूर्ण मास्टर आर्काइव (`anupama_master_story_archive.txt`), 2-राउंड वर्कफ़्लो नियम, 12 कैप्शन्स नियम, 3 रील SEO नियम, `Stock_Posts_Archive/` और `Sample_Posters/`।
+4. **`03_Google_Docs_Tools/`** - Google Docs ऑटोमेशन टूल्स (`save_to_docs.py`, `fetch_doc_with_photos.py`, `config.json`, `Google_Apps_Script_Color_Coded.js`)।
+5. **`04_Daily_Episode_Backups/`** - सभी तारीखों का ऐतिहासिक डेटा, पिछले एपिसोड्स का कंटेंट, पुराने लॉन्चर्स और बैकअप फाइल्स।
 
 ---
 
-## 📁 फोल्डर संरचना (Directory Layout):
+## मुख्य रूट फाइल्स (Active Root Workflows):
+- `7 SEP FIRST ROUND.bat` & `7 SEP SECOND ROUND.bat` (आज के राउंड 1 व राउंड 2 वन-क्लिक लॉन्चर्स)
+- `Auto_Fill_All_Prompts.bat` (12 मुख्य Facebook पोस्ट्स 1080×1350px)
+- `Auto_Fill_Reels.bat` (3 रील्स 1080×1920px)
+- `Auto_Fill_Round_2.bat` (राउंड 2 पोस्ट्स 13 से 18)
+- `Open_All_Profiles.bat` (सभी क्रोम प्रोफाइल्स एक साथ खोलने वाला टूल)
+- `auto_fill_all_prompts.py`, `auto_fill_reels.py`, `auto_fill_round2.py` (सक्रिय ऑटोमेशन स्क्रिप्ट्स)
+- `anupama_07sep_content.txt` & `anupama_07sep_captions.txt` (आज का सक्रिय एपिसोड कंटेंट व कैप्शन्स)
+- `anupama_master_story_archive.txt` (कहानी की पूरी ऐतिहासिक मास्टर फाइल - 185KB+)
+- **Google Notebook कथा स्रोत (Master Source):** [Anupama Google Notebook](https://notebook.google.com/notebook/a611b8b8-35db-4b71-9b7e-034660c3874c) (पूरी कहानी + दैनिक ताज़ा अपडेट्स)
+- **इंटरनेट लाइव रिसर्च:** Google Search द्वारा ताज़ा एपिसोड, प्रोमो, टीआरपी व सोशल मीडिया ट्रेंड्स
 
-* **`push_to_notebooklm.py`** : NotebookLM में तारीख सहित एपिसोड पोस्ट करने की स्क्रिप्ट।
-* **`create_12_cards.py`** : Prompt App में 12 कार्ड्स पब्लिश करने वाली स्क्रिप्ट।
-* **`story_scraper.py`** : JustShowBiz से 100% शुद्ध कहानी निकालने वाला स्क्रैपर (Zero Ads/Clutter)।
-* **`notebooklm_client.py`** : Playwright ऑटोमेशन क्लाइंट (तारीख की गारंटी के साथ)।
-* **`config.py`** : डायनामिक पाथ कॉन्फ़िगरेशन।
-* **`Anupama_Master_Story_Archive_24Jul_to_13Sep_2026.pdf`** : 24 जुलाई से 13 सितम्बर 2026 (50 एपिसोड्स) की मास्टर पीडीएफ।
-* **`anupama_master_story_archive.txt`** : सभी 50 कड़ियों का पूरा मास्टर टेक्स्ट डेटाबेस।
-* **`rules_and_prompts/`** : आपके सभी नियम, प्रॉम्प्ट्स, टाइपोग्राफी गाइड और लर्निंग मेमोरी।
-  - `user_writing_style_and_learning_memory.txt` (यूज़र स्टाइल & नियम #3: तारीख अनिवार्य)
-  - `master_named_photo_prompts.txt`
-  - `master_12_photo_prompts_archive.txt`
-  - `caption_master_prompt.txt`
-  - `viral_post_ideas_beyond_12.md`
-* **`chrome_profile/`** : आपका पहले से लॉग-इन क्रोम प्रोफाइल (पोर्टेबिलिटी के लिए)।
-
----
-✨ **तैयार:** अब आपको किसी दूसरे बिखरे हुए फोल्डर में जाने की ज़रूरत नहीं है, सारा काम इसी फोल्डर के अंदर से होगा!
