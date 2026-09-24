@@ -872,7 +872,7 @@ def generate_ai_viral_ideas(story_text: str, episode_title: str, date_str: str) 
     """
     import urllib.request
     
-    GEMINI_API_KEY = "AQ.Ab8RN6K4JTzVlV1BmkAEyiJqQFuYdGCk3VFqNlNpgWKrd557JA"
+    from gemini_api_client import GEMINI_API_KEY
     MODEL_NAME = "gemini-flash-lite-latest"
     API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 
