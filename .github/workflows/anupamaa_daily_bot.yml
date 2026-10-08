@@ -1,0 +1,42 @@
+name: Anupamaa Daily AutoBot
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Backup fallback trigger (Runs between 07:00 AM IST to 10:00 AM IST)
+    - cron: '35 1 * * *'
+    - cron: '05 2 * * *'
+    - cron: '35 2 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  anupamaa-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Anupamaa Pipeline (Cloud Mode)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python main.py --cloud
+
+      - name: Commit and Push Updated Story Archive to Cloud
+        run: |
+          git config --global user.name "Anupamaa-CloudBot"
+          git config --global user.email "bot@anupamaa.auto"
+          git add last_run_state.json 04_Daily_Episode_Backups/ || true
+          git commit -m "Auto-Save Anupamaa Daily Backup [skip ci]" || exit 0
+          git push origin main || git push origin master || true
