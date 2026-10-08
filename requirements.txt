@@ -1,0 +1,2 @@
+# No external dependencies required for cloud mode!
+# All networking and JSON operations use Python standard library.
