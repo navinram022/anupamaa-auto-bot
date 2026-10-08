@@ -1,7 +1,0 @@
-__pycache__/
-chrome_profile/
-logs/
-reports/
-scratch/
-*.pyc
-gemini_key.txt
