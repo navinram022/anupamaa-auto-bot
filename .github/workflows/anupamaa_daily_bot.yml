@@ -3,10 +3,12 @@ name: Anupamaa Daily AutoBot
 on:
   workflow_dispatch:
   schedule:
-    # Backup fallback trigger (Runs between 07:00 AM IST to 10:00 AM IST)
-    - cron: '35 1 * * *'
-    - cron: '05 2 * * *'
-    - cron: '35 2 * * *'
+    # 07:00, 07:15, 07:25 IST (01:30, 01:45, 01:55 UTC)
+    - cron: '30,45,55 1 * * *'
+    # 07:35, 07:45, 07:55, 08:05, 08:15, 08:25 IST (02:05, 02:15, 02:25, 02:35, 02:45, 02:55 UTC)
+    - cron: '5,15,25,35,45,55 2 * * *'
+    # 08:35, 08:45, 08:55, 09:05, 09:15, 09:25 IST (03:05, 03:15, 03:25, 03:35, 03:45, 03:55 UTC)
+    - cron: '5,15,25,35,45,55 3 * * *'
 
 permissions:
   contents: write
