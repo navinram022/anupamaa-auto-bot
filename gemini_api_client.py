@@ -9,6 +9,7 @@ ZERO Stock Photo layers - Pure high-impact viral copy for Neetu Prompt Studio.
 import os
 import sys
 import json
+import time
 import urllib.request
 import logging
 from config import BASE_DIR
@@ -225,14 +226,18 @@ def generate_with_gemini_api(story_text: str, episode_date: str = "") -> str:
         headers={"Content-Type": "application/json"}
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            candidate = data.get("candidates", [{}])[0]
-            parts = candidate.get("content", {}).get("parts", [{}])
-            result_text = parts[0].get("text", "").strip()
-            logger.info(f"Gemini API returned {len(result_text)} chars of structured content!")
-            return result_text
-    except Exception as e:
-        logger.error(f"Gemini API request failed: {e}")
-        raise e
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                candidate = data.get("candidates", [{}])[0]
+                parts = candidate.get("content", {}).get("parts", [{}])
+                result_text = parts[0].get("text", "").strip()
+                logger.info(f"Gemini API returned {len(result_text)} chars of structured content!")
+                return result_text
+        except Exception as e:
+            logger.warning(f"Attempt {attempt}/3 to call Gemini API failed: {e}")
+            if attempt == 3:
+                logger.error(f"Gemini API request failed permanently: {e}")
+                raise e
+            time.sleep(3)
