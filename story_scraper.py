@@ -6,6 +6,7 @@ Uses RSS feed for ultra-fast, 100% reliable extraction without Cloudflare blocki
 import urllib.request
 import re
 import html
+import time
 import logging
 from config import JUSTSHOWBIZ_FEED_URL
 
@@ -75,8 +76,17 @@ def fetch_latest_anupama_update() -> dict:
         }
     )
     
-    with urllib.request.urlopen(req, timeout=15) as response:
-        feed_xml = response.read().decode('utf-8', errors='ignore')
+    feed_xml = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                feed_xml = response.read().decode('utf-8', errors='ignore')
+                break
+        except Exception as e:
+            logger.warning(f"Attempt {attempt}/3 to fetch JustShowBiz feed failed: {e}")
+            if attempt == 3:
+                raise e
+            time.sleep(2)
         
     # Extract <item> blocks
     items = re.findall(r'<item>(.*?)</item>', feed_xml, re.DOTALL)
